@@ -1,17 +1,5 @@
 import chess
 import chess.engine
-import chess.pgn
-
-# Create an empty board
-# board = chess.Board(None)
-
-# Add the pieces
-# board.set_piece_at(chess.G6, chess.Piece(chess.KING, chess.WHITE))
-# board.set_piece_at(chess.G3, chess.Piece(chess.KING, chess.BLACK))
-# board.set_piece_at(chess.E1, chess.Piece(chess.ROOK, chess.BLACK))
-
-# White to move
-# board.turn = chess.WHITE
 
 # Location of the Stockfish program
 stockfish_path = "stockfish/stockfish-windows-x86-64-universal.exe"
@@ -19,19 +7,7 @@ stockfish_path = "stockfish/stockfish-windows-x86-64-universal.exe"
 # Start Stockfish
 engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
 
-# Define helper functions
-
-# FUNCTION 1 — Convert PV to readable notation
-def pv_to_san(board, pv):
-    temp_board = board.copy()
-    moves_san = []
-
-    for move in pv:
-        moves_san.append(temp_board.san(move))
-        temp_board.push(move)
-
-    return moves_san
-# FUNCTION 2 — Format Stockfish evaluation
+# FUNCTION — Format Stockfish evaluation
 def format_score(score):
     mate = score.mate()
 
@@ -50,39 +26,55 @@ def format_score(score):
         return f"Black advantage: {evaluation:.2f}"
     else:
         return "Equal position: 0.00"
-# FUNCTION 3 — Identify endgame
+# FUNCTION — Identify endgame
 def is_endgame(board):
-    piece_count = len(board.piece_map())
-
-    if piece_count <= 7:
-        return True
-    else:
-        return False
-# FUNCTION 4 — get a FEN position
+    return len(board.piece_map()) <= 7
+# FUNCTION — get a FEN position
 def get_position():
-    fen = input("Enter FEN: ")
-    board = chess.Board(fen)
+    while True:
+        fen = input("Enter FEN: ")
 
-    return board
-#
+        try:
+            return chess.Board(fen)
+        except ValueError:
+            print("Invalid FEN. Try again.")
 
-# FUNCTION 5 — load a PNG game
-def load_game(pgn_file):
-    with open(pgn_file) as file:
-        game = chess.pgn.read_game(file)
 
-    return game
-#FUNCTION 5 — Walk through the completed game
-def replay_game(game):
-    board = game.board()
+# FUNCTION — Explain the quality of a candidate move
+def assess_move(candidate_move, best_move, before_score, after_score, evaluation_loss):
 
-    for move_number, move in enumerate(game.mainline_moves(), start=1):
-        move_san = board.san(move)
+    if candidate_move == best_move:
+        return "Best move"
 
-        print("Move", move_number, ":", move_san)
+    # The position was already a forced mate
+    if before_score.is_mate():
+        before_mate = before_score.mate()
 
-        board.push(move)
+        if before_mate < 0:
+            if after_score.is_mate() and after_score.mate() < 0:
+                return "Already losing — this move remains in a forced-mate position."
+            else:
+                return "Improvement — this move escapes the forced mate."
 
+        if before_mate > 0:
+            if not after_score.is_mate():
+                return "Major mistake — this move loses a forced win."
+
+    # Candidate move creates a forced mate against us
+    if after_score.is_mate() and after_score.mate() < 0:
+        return "Major mistake — this move allows forced checkmate."
+
+    # Normal numerical evaluations
+    if evaluation_loss < 0.20:
+        return "Excellent — nearly as strong as the best move."
+    elif evaluation_loss < 0.50:
+        return "Good — a small difference from the best move."
+    elif evaluation_loss < 1.00:
+        return "Inaccuracy — gives up some advantage."
+    elif evaluation_loss < 2.00:
+        return "Mistake — significantly worsens the position."
+    else:
+        return "Blunder — seriously worsens the position."
 
 # FUNCTION — Analyze position
 def analyze_position(board, engine):
@@ -91,33 +83,125 @@ def analyze_position(board, engine):
 
     info = engine.analyse(
         board,
-        chess.engine.Limit(depth=15),
-        multipv=3
+        chess.engine.Limit(depth=15)
     )
 
-    info = engine.analyse(
+    move = info["pv"][0]
+    move_san = board.san(move)
+
+    score = info["score"].pov(chess.WHITE)
+    score_text = format_score(score)
+
+    print()
+    print("Best move:", move_san)
+    print("Evaluation:", score_text)
+
+# FUNCTION — Convert evaluation to a number
+def score_to_number(score):
+    # Treat forced mate as a very large advantage/disadvantage
+    if score.is_mate():
+        mate = score.mate()
+
+        if mate > 0:
+            return 100.0
+        else:
+            return -100.0
+
+    return score.score() / 100
+
+# FUNCTION — Test a move
+def test_my_move(board, engine):
+
+    # Remember whose move it is
+    player = board.turn
+
+    # Analyze the original position once
+    best_info = engine.analyse(
         board,
-        chess.engine.Limit(depth=15),
-        multipv=3
+        chess.engine.Limit(depth=15)
     )
-    for candidate in info:
-        move = candidate["pv"][0]
-        move_san = board.san(move)
 
-        score = candidate["score"].pov(chess.WHITE)
-        score_text = format_score(score)
+    best_move = best_info["pv"][0]
+    best_move_san = board.san(best_move)
+    before_score = best_info["score"].pov(player)
 
-        line = pv_to_san(board, candidate["pv"])
-
-        print("Move:", move_san)
-        print("Evaluation:", score_text)
-        print("Line:", " ".join(line))
+    while True:
         print()
+
+        # Keep asking until a legal move is entered
+        while True:
+            candidate_san = input("Move you are considering: ")
+
+            try:
+                candidate_move = board.parse_san(candidate_san)
+                break
+            except ValueError:
+                print("Invalid or illegal move. Try again.")
+
+        # Play candidate move on a COPY of the original position
+        test_board = board.copy()
+        test_board.push(candidate_move)
+
+        candidate_info = engine.analyse(
+            test_board,
+            chess.engine.Limit(depth=15)
+        )
+
+        after_score = candidate_info["score"].pov(player)
+
+        before_value = score_to_number(before_score)
+        after_value = score_to_number(after_score)
+
+        evaluation_loss = before_value - after_value
+
+        print()
+        print("Your move:", candidate_san)
+        print("Stockfish best move:", best_move_san)
+        print()
+
+        assessment = assess_move(
+            candidate_move,
+            best_move,
+            before_score,
+            after_score,
+            evaluation_loss
+        )
+
+        # If the user found Stockfish's best move
+        if candidate_move == best_move:
+            print(
+                "Position after move:",
+                format_score(candidate_info["score"].pov(chess.WHITE))
+            )
+            print()
+            print("Assessment:", assessment)
+
+        # If the user chose a different move
+        else:
+            print(
+                "Best possible evaluation:",
+                format_score(best_info["score"].pov(chess.WHITE))
+            )
+            print(
+                "After your move:",
+                format_score(candidate_info["score"].pov(chess.WHITE))
+            )
+            print()
+            print("Assessment:", assessment)
+
+            if not before_score.is_mate() and not after_score.is_mate():
+                print(f"Evaluation lost: {max(0, evaluation_loss):.2f}")
+        print()
+        again = input("Test another move from this position? (y/n): ")
+        if again.lower() != "y":
+            break
+
 # Call function
-print("Stockfish Analyzer")
+print("Stockfish Chess Practice")
+print("For offline study and practice only")
 print()
 print("1 - Analyze a position")
-print("2 - Load a completed game")
+print("2 - Test my move")
 print()
 
 choice = input("Choose an option: ")
@@ -127,15 +211,8 @@ if choice == "1":
     analyze_position(board, engine)
 
 elif choice == "2":
-    game = load_game("test_game.pgn")
-
-    print("White:", game.headers["White"])
-    print("Black:", game.headers["Black"])
-    print("Result:", game.headers["Result"])
-    print("Moves:", game.mainline())
-    print()
-
-    replay_game(game)
+    board = get_position()
+    test_my_move(board, engine)
 
 else:
     print("Invalid option")
