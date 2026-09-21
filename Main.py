@@ -1,11 +1,26 @@
 import chess
 import chess.engine
+import os
+import sys
 
-# Location of the Stockfish program
-stockfish_path = "stockfish/stockfish-windows-x86-64-universal.exe"
 
-# Start Stockfish
-engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+# FUNCTION — Get Stockfish location
+def get_stockfish_path():
+    if getattr(sys, "frozen", False):
+        # Running as a packaged executable
+        base_path = sys._MEIPASS
+    else:
+        # Running normally from Python/PyCharm
+        base_path = os.path.dirname(os.path.abspath(__file__))
+
+    return os.path.join(
+        base_path,
+        "stockfish",
+        "stockfish-windows-x86-64-universal.exe"
+    )
+
+
+stockfish_path = get_stockfish_path()
 
 # FUNCTION — Format Stockfish evaluation
 def format_score(score):
@@ -197,26 +212,39 @@ def test_my_move(board, engine):
             break
 
 # Call function
-print("Stockfish Chess Practice")
-print("For offline study and practice only")
-print()
-print("1 - Analyze a position")
-print("2 - Test my move")
-print()
+def main():
+    engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
 
-choice = input("Choose an option: ")
+    try:
+        while True:
+            print()
+            print("Stockfish Chess Practice")
+            print("For offline study and practice only")
+            print()
+            print("1 - Analyze a position")
+            print("2 - Test my move")
+            print("3 - Exit")
+            print()
 
-if choice == "1":
-    board = get_position()
-    analyze_position(board, engine)
+            choice = input("Choose an option: ")
 
-elif choice == "2":
-    board = get_position()
-    test_my_move(board, engine)
+            if choice == "1":
+                board = get_position()
+                analyze_position(board, engine)
 
-else:
-    print("Invalid option")
+            elif choice == "2":
+                board = get_position()
+                test_my_move(board, engine)
 
+            elif choice == "3":
+                print("Closing Stockfish Chess Practice.")
+                break
 
-# Close Stockfish
-engine.quit()
+            else:
+                print("Invalid option. Try again.")
+
+    finally:
+        engine.quit()
+
+if __name__ == "__main__":
+            main()
