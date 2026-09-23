@@ -5,7 +5,11 @@ a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('stockfish', 'stockfish')],
+    datas=[
+        ('stockfish', 'stockfish'),
+        ('LICENSE', '.'),
+        ('THIRD_PARTY_LICENSES.md', '.'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

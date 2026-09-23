@@ -3,6 +3,8 @@ import chess.engine
 import os
 import sys
 
+APP_NAME = "Stockfish Chess Practice"
+APP_VERSION = "1.0.0"
 
 # FUNCTION — Get Stockfish location
 def get_stockfish_path():
@@ -213,12 +215,18 @@ def test_my_move(board, engine):
 
 # Call function
 def main():
-    engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+    try:
+        engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+    except (FileNotFoundError, OSError):
+        print("Error: Stockfish could not be started.")
+        print("Expected location:", stockfish_path)
+        input("Press Enter to exit.")
+        return
 
     try:
         while True:
             print()
-            print("Stockfish Chess Practice")
+            print(f"{APP_NAME} v{APP_VERSION}")
             print("For offline study and practice only")
             print()
             print("1 - Analyze a position")
